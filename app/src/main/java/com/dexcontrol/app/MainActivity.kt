@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -30,9 +29,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -50,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -91,6 +91,7 @@ fun DexControlApp(openAccessibilitySettings: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var serviceRunning by remember { mutableStateOf(DexControlService.isRunning) }
     var dexActive by remember { mutableStateOf(false) }
+    var sensitivity by remember { mutableFloatStateOf(2.5f) }
 
     // Atualiza o status do serviço periodicamente.
     LaunchedEffect(Unit) {
@@ -137,12 +138,13 @@ fun DexControlApp(openAccessibilitySettings: () -> Unit) {
                 DexInactiveCard()
             }
 
-            TabRow(
+            ScrollableTabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = Navy,
                 contentColor = Accent,
+                edgePadding = 8.dp,
             ) {
-                listOf("Touchpad", "Teclado", "Sistema").forEachIndexed { index, title ->
+                listOf("Touchpad", "Scroll", "Mouse", "Teclado", "Sistema").forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
@@ -157,8 +159,10 @@ fun DexControlApp(openAccessibilitySettings: () -> Unit) {
             }
 
             when (selectedTab) {
-                0 -> TouchpadScreen()
-                1 -> KeyboardScreen()
+                0 -> TouchpadScreen(sensitivity)
+                1 -> ScrollScreen()
+                2 -> MouseScreen(sensitivity, onSensitivityChange = { sensitivity = it })
+                3 -> KeyboardScreen()
                 else -> SystemScreen()
             }
         }
@@ -221,17 +225,104 @@ private fun DexInactiveCard() {
 }
 
 // ---------------------------------------------------------------------------
-// Touchpad
+// Touchpad — a guia inteira é a superfície do touchpad
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun TouchpadScreen() {
-    var sensitivity by remember { mutableFloatStateOf(2.5f) }
+private fun TouchpadScreen(sensitivity: Float) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp)
+            .background(Panel, RoundedCornerShape(20.dp))
+            .pointerInput(sensitivity) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    DexControlService.instance?.moveCursorBy(
+                        dragAmount.x * sensitivity,
+                        dragAmount.y * sensitivity,
+                    )
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { DexControlService.instance?.leftClick() },
+                    onDoubleTap = { DexControlService.instance?.doubleClick() },
+                    onLongPress = { DexControlService.instance?.rightClick() },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "Arraste para mover o cursor\n\nToque = clique esquerdo\nToque duplo = duplo clique\nToque longo = clique direito",
+            color = TextSecondary,
+            fontSize = 14.sp,
+            lineHeight = 22.sp,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
 
+// ---------------------------------------------------------------------------
+// Scroll — guia dedicada com uma superfície grande de rolagem
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ScrollScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(Panel, RoundedCornerShape(20.dp))
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        DexControlService.instance?.scrollBy(dragAmount.y * 3f)
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "Arraste para cima ou para baixo\npara rolar a página no DeX",
+                color = TextSecondary,
+                fontSize = 14.sp,
+                lineHeight = 22.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(72.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            BigActionButton("Rolar para cima", Modifier.weight(1f)) {
+                DexControlService.instance?.scrollBy(-350f)
+            }
+            BigActionButton("Rolar para baixo", Modifier.weight(1f)) {
+                DexControlService.instance?.scrollBy(350f)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Mouse — botões grandes e ajustes do cursor
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun MouseScreen(sensitivity: Float, onSensitivityChange: (Float) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(
@@ -240,99 +331,54 @@ private fun TouchpadScreen() {
                 .weight(1f),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Área principal do touchpad.
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .background(Panel, RoundedCornerShape(16.dp))
-                    .pointerInput(sensitivity) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            DexControlService.instance?.moveCursorBy(
-                                dragAmount.x * sensitivity,
-                                dragAmount.y * sensitivity,
-                            )
-                        }
-                    }
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = { DexControlService.instance?.leftClick() },
-                            onDoubleTap = { DexControlService.instance?.doubleClick() },
-                            onLongPress = { DexControlService.instance?.rightClick() },
-                        )
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "Arraste para mover o cursor\nToque = clique • Toque longo = clique direito",
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                    lineHeight = 20.sp,
-                )
-            }
-
-            // Faixa de scroll vertical.
-            Box(
-                modifier = Modifier
-                    .width(56.dp)
-                    .fillMaxHeight()
-                    .background(PanelLight, RoundedCornerShape(16.dp))
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            DexControlService.instance?.scrollBy(dragAmount.y * 3f)
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("S\nC\nR\nO\nL\nL", color = TextSecondary, fontSize = 11.sp, lineHeight = 14.sp)
-            }
-        }
-
-        // Botões do mouse.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            MouseButton("Clique esquerdo", Modifier.weight(2f)) {
+            BigActionButton("Clique\nesquerdo", Modifier.weight(1f).fillMaxHeight()) {
                 DexControlService.instance?.leftClick()
             }
-            MouseButton("Duplo", Modifier.weight(1f)) {
-                DexControlService.instance?.doubleClick()
-            }
-            MouseButton("Clique direito", Modifier.weight(2f)) {
+            BigActionButton("Clique\ndireito", Modifier.weight(1f).fillMaxHeight()) {
                 DexControlService.instance?.rightClick()
             }
         }
 
-        // Sensibilidade.
-        Column {
-            Text(
-                "Sensibilidade do cursor: ${"%.1f".format(sensitivity)}x",
-                color = TextSecondary,
-                fontSize = 13.sp,
-            )
-            Slider(
-                value = sensitivity,
-                onValueChange = { sensitivity = it },
-                valueRange = 0.5f..6f,
-            )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            BigActionButton("Duplo clique", Modifier.weight(1f)) {
+                DexControlService.instance?.doubleClick()
+            }
+        }
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Panel),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text(
+                    "Sensibilidade do cursor: ${"%.1f".format(sensitivity)}x",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                )
+                Slider(
+                    value = sensitivity,
+                    onValueChange = onSensitivityChange,
+                    valueRange = 0.5f..6f,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun MouseButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun BigActionButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Button(
         onClick = onClick,
-        modifier = modifier.fillMaxHeight(),
-        shape = RoundedCornerShape(14.dp),
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(containerColor = PanelLight, contentColor = TextPrimary),
     ) {
-        Text(label, fontSize = 13.sp)
+        Text(label, fontSize = 16.sp, textAlign = TextAlign.Center, lineHeight = 22.sp)
     }
 }
 
@@ -362,7 +408,7 @@ private fun KeyboardScreen() {
             onValueChange = { text = it },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text("Digite o texto…", color = TextSecondary) },
-            minLines = 2,
+            minLines = 4,
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -372,20 +418,23 @@ private fun KeyboardScreen() {
                         text = ""
                     }
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Navy),
             ) {
                 Text("Enviar texto")
             }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 onClick = { DexControlService.instance?.backspace() },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(56.dp),
             ) {
                 Text("Backspace", color = TextPrimary)
             }
             OutlinedButton(
                 onClick = { DexControlService.instance?.pressEnter() },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(56.dp),
             ) {
                 Text("Enter", color = TextPrimary)
             }
@@ -396,6 +445,8 @@ private fun KeyboardScreen() {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ShortcutButton("Copiar", Modifier.weight(1f)) { DexControlService.instance?.copy() }
             ShortcutButton("Colar", Modifier.weight(1f)) { DexControlService.instance?.paste() }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ShortcutButton("Recortar", Modifier.weight(1f)) { DexControlService.instance?.cut() }
             ShortcutButton("Sel. tudo", Modifier.weight(1f)) { DexControlService.instance?.selectAll() }
         }
@@ -413,11 +464,11 @@ private fun KeyboardScreen() {
 private fun ShortcutButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Button(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.height(52.dp),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(containerColor = PanelLight, contentColor = TextPrimary),
     ) {
-        Text(label, fontSize = 12.sp)
+        Text(label, fontSize = 13.sp)
     }
 }
 
@@ -461,7 +512,8 @@ private fun SystemScreen() {
                     "1. Conecte o celular a um monitor e ative o Samsung DeX.\n" +
                         "2. Ative o serviço de acessibilidade do DeX Control.\n" +
                         "3. O cursor aparece no monitor — use a aba Touchpad para mover e clicar.\n" +
-                        "4. Para digitar, clique em um campo de texto no monitor e use a aba Teclado.",
+                        "4. Para digitar, clique em um campo de texto no monitor e use a aba Teclado.\n" +
+                        "5. A rolagem de páginas fica na aba Scroll e os cliques grandes na aba Mouse.",
                     color = TextSecondary,
                     fontSize = 13.sp,
                     lineHeight = 20.sp,
