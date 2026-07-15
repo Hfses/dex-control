@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DeX Control</string>
+    <string name="service_label">DeX Control — Touchpad e Teclado</string>
+    <string name="service_description">Permite que o DeX Control mova o cursor, execute cliques, role a tela e digite texto no monitor do Samsung DeX. Nenhum dado é coletado ou enviado.</string>
+</resources>
