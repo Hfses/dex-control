@@ -11,13 +11,29 @@ android {
         applicationId = "com.dexcontrol.app"
         minSdk = 30
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.2.1"
+    }
+
+    // Chave de assinatura fixa: garante que todas as versões tenham a mesma
+    // assinatura, permitindo atualizar o app sem desinstalar.
+    signingConfigs {
+        create("dexcontrol") {
+            storeFile = file("dexcontrol.p12")
+            storePassword = "fa0274f0ef8186aedcd9f72071bcbf61cba6f29e636fad94"
+            keyAlias = "dexcontrol"
+            keyPassword = "fa0274f0ef8186aedcd9f72071bcbf61cba6f29e636fad94"
+            storeType = "PKCS12"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("dexcontrol")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("dexcontrol")
         }
     }
 
