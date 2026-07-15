@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -115,7 +116,7 @@ fun DexControlApp(openAccessibilitySettings: () -> Unit) {
                         Text("DeX Control", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                         Text(
                             text = when {
-                                !serviceRunning -> "Serviço desativado — toque em Ativar"
+                                !serviceRunning -> "Serviço desativado — ative na aba Config"
                                 dexActive -> "DeX ativo — controles habilitados"
                                 else -> "Aguardando o DeX — conecte ao monitor"
                             },
@@ -132,19 +133,13 @@ fun DexControlApp(openAccessibilitySettings: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            if (!serviceRunning) {
-                EnableServiceCard(openAccessibilitySettings)
-            } else if (!dexActive) {
-                DexInactiveCard()
-            }
-
             ScrollableTabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = Navy,
                 contentColor = Accent,
                 edgePadding = 8.dp,
             ) {
-                listOf("Touchpad", "Scroll", "Mouse", "Teclado", "Sistema").forEachIndexed { index, title ->
+                listOf("Touchpad", "Mouse", "Teclado", "Sistema", "Config").forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
@@ -160,126 +155,72 @@ fun DexControlApp(openAccessibilitySettings: () -> Unit) {
 
             when (selectedTab) {
                 0 -> TouchpadScreen(sensitivity)
-                1 -> ScrollScreen()
-                2 -> MouseScreen(sensitivity, onSensitivityChange = { sensitivity = it })
-                3 -> KeyboardScreen()
-                else -> SystemScreen()
+                1 -> MouseScreen()
+                2 -> KeyboardScreen()
+                3 -> SystemScreen()
+                else -> ConfigScreen(
+                    serviceRunning = serviceRunning,
+                    dexActive = dexActive,
+                    sensitivity = sensitivity,
+                    onSensitivityChange = { sensitivity = it },
+                    openAccessibilitySettings = openAccessibilitySettings,
+                )
             }
-        }
-    }
-}
-
-@Composable
-private fun EnableServiceCard(openAccessibilitySettings: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        colors = CardDefaults.cardColors(containerColor = PanelLight),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                "Ativação necessária",
-                color = TextPrimary,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "Para controlar o cursor do DeX, ative o serviço de acessibilidade " +
-                    "\u201CDeX Control\u201D nas configurações do Android.",
-                color = TextSecondary,
-                fontSize = 13.sp,
-            )
-            Button(
-                onClick = openAccessibilitySettings,
-                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Navy),
-            ) {
-                Text("Ativar serviço")
-            }
-        }
-    }
-}
-
-@Composable
-private fun DexInactiveCard() {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        colors = CardDefaults.cardColors(containerColor = PanelLight),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                "DeX não detectado",
-                color = TextPrimary,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "O cursor e os controles ficam desativados até o Samsung DeX ser " +
-                    "iniciado. Conecte o celular a um monitor (ou ative o DeX) e o " +
-                    "controle será habilitado automaticamente.",
-                color = TextSecondary,
-                fontSize = 13.sp,
-            )
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Touchpad — a guia inteira é a superfície do touchpad
+// Touchpad — tela inteira: superfície do touchpad + faixa de scroll ao lado
 // ---------------------------------------------------------------------------
 
 @Composable
 private fun TouchpadScreen(sensitivity: Float) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(12.dp)
-            .background(Panel, RoundedCornerShape(20.dp))
-            .pointerInput(sensitivity) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    DexControlService.instance?.moveCursorBy(
-                        dragAmount.x * sensitivity,
-                        dragAmount.y * sensitivity,
-                    )
-                }
-            }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { DexControlService.instance?.leftClick() },
-                    onDoubleTap = { DexControlService.instance?.doubleClick() },
-                    onLongPress = { DexControlService.instance?.rightClick() },
-                )
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            "Arraste para mover o cursor\n\nToque = clique esquerdo\nToque duplo = duplo clique\nToque longo = clique direito",
-            color = TextSecondary,
-            fontSize = 14.sp,
-            lineHeight = 22.sp,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Scroll — guia dedicada com uma superfície grande de rolagem
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun ScrollScreen() {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxSize()
             .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // Superfície principal do touchpad
         Box(
             modifier = Modifier
-                .fillMaxWidth()
                 .weight(1f)
+                .fillMaxHeight()
                 .background(Panel, RoundedCornerShape(20.dp))
+                .pointerInput(sensitivity) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        DexControlService.instance?.moveCursorBy(
+                            dragAmount.x * sensitivity,
+                            dragAmount.y * sensitivity,
+                        )
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { DexControlService.instance?.leftClick() },
+                        onDoubleTap = { DexControlService.instance?.doubleClick() },
+                        onLongPress = { DexControlService.instance?.rightClick() },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "Arraste para mover o cursor\n\nToque = clique esquerdo\nToque duplo = duplo clique\nToque longo = clique direito",
+                color = TextSecondary,
+                fontSize = 14.sp,
+                lineHeight = 22.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        // Faixa de scroll vertical, como em um notebook
+        Box(
+            modifier = Modifier
+                .width(64.dp)
+                .fillMaxHeight()
+                .background(PanelLight, RoundedCornerShape(20.dp))
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
@@ -289,36 +230,22 @@ private fun ScrollScreen() {
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                "Arraste para cima ou para baixo\npara rolar a página no DeX",
+                "S\nC\nR\nO\nL\nL",
                 color = TextSecondary,
-                fontSize = 14.sp,
-                lineHeight = 22.sp,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
                 textAlign = TextAlign.Center,
             )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(72.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            BigActionButton("Rolar para cima", Modifier.weight(1f)) {
-                DexControlService.instance?.scrollBy(-350f)
-            }
-            BigActionButton("Rolar para baixo", Modifier.weight(1f)) {
-                DexControlService.instance?.scrollBy(350f)
-            }
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Mouse — botões grandes e ajustes do cursor
+// Mouse — botões grandes de clique
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun MouseScreen(sensitivity: Float, onSensitivityChange: (Float) -> Unit) {
+private fun MouseScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -350,21 +277,17 @@ private fun MouseScreen(sensitivity: Float, onSensitivityChange: (Float) -> Unit
             }
         }
 
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Panel),
-            modifier = Modifier.fillMaxWidth(),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(72.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(Modifier.padding(16.dp)) {
-                Text(
-                    "Sensibilidade do cursor: ${"%.1f".format(sensitivity)}x",
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                )
-                Slider(
-                    value = sensitivity,
-                    onValueChange = onSensitivityChange,
-                    valueRange = 0.5f..6f,
-                )
+            BigActionButton("Rolar para cima", Modifier.weight(1f)) {
+                DexControlService.instance?.scrollBy(-350f)
+            }
+            BigActionButton("Rolar para baixo", Modifier.weight(1f)) {
+                DexControlService.instance?.scrollBy(350f)
             }
         }
     }
@@ -501,7 +424,103 @@ private fun SystemScreen() {
                 DexControlService.instance?.takeScreenshot()
             }
         }
+    }
+}
 
+// ---------------------------------------------------------------------------
+// Config — ativação do serviço, status do DeX, sensibilidade e guia de uso
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ConfigScreen(
+    serviceRunning: Boolean,
+    dexActive: Boolean,
+    sensitivity: Float,
+    onSensitivityChange: (Float) -> Unit,
+    openAccessibilitySettings: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // Status e ativação do serviço
+        Card(
+            colors = CardDefaults.cardColors(containerColor = PanelLight),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    if (serviceRunning) "Serviço ativado" else "Ativação necessária",
+                    color = TextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    if (serviceRunning) {
+                        "O serviço de acessibilidade do DeX Control está em execução."
+                    } else {
+                        "Para controlar o cursor do DeX, ative o serviço de acessibilidade " +
+                            "\u201CDeX Control\u201D nas configurações do Android."
+                    },
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                )
+                Button(
+                    onClick = openAccessibilitySettings,
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Navy),
+                ) {
+                    Text(if (serviceRunning) "Configurações de acessibilidade" else "Ativar serviço")
+                }
+            }
+        }
+
+        // Status do DeX
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Panel),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    if (dexActive) "DeX ativo" else "DeX não detectado",
+                    color = if (dexActive) Accent else Color(0xFFE07E5E),
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    if (dexActive) {
+                        "O monitor está conectado e os controles estão habilitados."
+                    } else {
+                        "O cursor e os controles ficam desativados até o Samsung DeX ser " +
+                            "iniciado. Conecte o celular a um monitor (ou ative o DeX) e o " +
+                            "controle será habilitado automaticamente."
+                    },
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                )
+            }
+        }
+
+        // Sensibilidade
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Panel),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text(
+                    "Sensibilidade do cursor: ${"%.1f".format(sensitivity)}x",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                )
+                Slider(
+                    value = sensitivity,
+                    onValueChange = onSensitivityChange,
+                    valueRange = 0.5f..6f,
+                )
+            }
+        }
+
+        // Guia de uso
         Card(
             colors = CardDefaults.cardColors(containerColor = Panel),
             modifier = Modifier.fillMaxWidth(),
@@ -510,10 +529,10 @@ private fun SystemScreen() {
                 Text("Como usar", color = TextPrimary, fontWeight = FontWeight.SemiBold)
                 Text(
                     "1. Conecte o celular a um monitor e ative o Samsung DeX.\n" +
-                        "2. Ative o serviço de acessibilidade do DeX Control.\n" +
+                        "2. Ative o serviço de acessibilidade acima.\n" +
                         "3. O cursor aparece no monitor — use a aba Touchpad para mover e clicar.\n" +
-                        "4. Para digitar, clique em um campo de texto no monitor e use a aba Teclado.\n" +
-                        "5. A rolagem de páginas fica na aba Scroll e os cliques grandes na aba Mouse.",
+                        "4. A faixa lateral do Touchpad rola as páginas (scroll).\n" +
+                        "5. Para digitar, clique em um campo de texto no monitor e use a aba Teclado.",
                     color = TextSecondary,
                     fontSize = 13.sp,
                     lineHeight = 20.sp,

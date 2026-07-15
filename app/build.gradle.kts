@@ -11,8 +11,8 @@ android {
         applicationId = "com.dexcontrol.app"
         minSdk = 30
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.2.1"
+        versionCode = 5
+        versionName = "1.3.0"
     }
 
     // Chave de assinatura fixa: garante que todas as versões tenham a mesma
