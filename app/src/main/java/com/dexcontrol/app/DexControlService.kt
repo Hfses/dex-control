@@ -3,6 +3,7 @@ package com.dexcontrol.app
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -23,8 +24,9 @@ import android.view.accessibility.AccessibilityNodeInfo
  * Serviço de acessibilidade que injeta gestos (movimento do cursor, cliques,
  * scroll) no display do Samsung DeX e manipula texto no campo focado.
  *
- * O cursor é desenhado como um overlay no display externo. Quando nenhum
- * display externo está conectado, o serviço controla a tela do próprio celular.
+ * O cursor só é exibido — e os controles só funcionam — quando o DeX está
+ * ativo (monitor externo conectado ou modo desktop da Samsung detectado).
+ * Sem DeX, o overlay é removido e nenhum gesto é injetado.
  */
 class DexControlService : AccessibilityService() {
 
@@ -49,6 +51,11 @@ class DexControlService : AccessibilityService() {
 
     val isOnExternalDisplay: Boolean
         get() = targetDisplayId != Display.DEFAULT_DISPLAY
+
+    /** Verdadeiro apenas quando o DeX está ativo (monitor externo ou modo desktop). */
+    @Volatile
+    var isDexActive: Boolean = false
+        private set
 
     private var screenWidth = 1920f
     private var screenHeight = 1080f
@@ -94,15 +101,45 @@ class DexControlService : AccessibilityService() {
 
     override fun onInterrupt() = Unit
 
+    /** Chamado quando o DeX é ativado/desativado sem troca de display (ex.: DeX na tela do celular). */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        mainHandler.post { setupForBestDisplay() }
+    }
+
     // ---------------------------------------------------------------------
     // Display e overlay do cursor
     // ---------------------------------------------------------------------
+
+    /**
+     * Detecta o modo desktop da Samsung (DeX) via campo de configuração
+     * proprietário. Retorna false em aparelhos não-Samsung ou fora do DeX.
+     */
+    private fun isSamsungDexMode(): Boolean = try {
+        val config = resources.configuration
+        val configClass = config.javaClass
+        val enabled = configClass.getField("SEM_DESKTOP_MODE_ENABLED").getInt(configClass)
+        configClass.getField("semDesktopModeEnabled").getInt(config) == enabled
+    } catch (_: Exception) {
+        false
+    }
 
     private fun setupForBestDisplay() {
         removeCursorOverlay()
 
         val dm = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val external = dm.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY && it.isValid }
+
+        // DeX ativo = monitor externo conectado OU modo desktop Samsung
+        // (DeX no próprio celular / tablet).
+        isDexActive = external != null || isSamsungDexMode()
+
+        if (!isDexActive) {
+            // Sem DeX: nenhum cursor na tela do celular e nenhum controle ativo.
+            targetDisplayId = Display.DEFAULT_DISPLAY
+            return
+        }
+
         val display = external ?: dm.getDisplay(Display.DEFAULT_DISPLAY) ?: return
 
         targetDisplayId = display.displayId
@@ -168,6 +205,7 @@ class DexControlService : AccessibilityService() {
     // ---------------------------------------------------------------------
 
     fun moveCursorBy(dx: Float, dy: Float) {
+        if (!isDexActive) return
         cursorX = (cursorX + dx).coerceIn(0f, screenWidth - 1f)
         cursorY = (cursorY + dy).coerceIn(0f, screenHeight - 1f)
 
@@ -233,6 +271,7 @@ class DexControlService : AccessibilityService() {
     }
 
     private fun dispatchStroke(path: Path, durationMs: Long) {
+        if (!isDexActive) return
         val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
         val gesture = GestureDescription.Builder()
             .setDisplayId(targetDisplayId)

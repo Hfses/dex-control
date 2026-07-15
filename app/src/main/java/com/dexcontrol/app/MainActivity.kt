@@ -90,13 +90,13 @@ class MainActivity : ComponentActivity() {
 fun DexControlApp(openAccessibilitySettings: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var serviceRunning by remember { mutableStateOf(DexControlService.isRunning) }
-    var externalDisplay by remember { mutableStateOf(false) }
+    var dexActive by remember { mutableStateOf(false) }
 
     // Atualiza o status do serviço periodicamente.
     LaunchedEffect(Unit) {
         while (true) {
             serviceRunning = DexControlService.isRunning
-            externalDisplay = DexControlService.instance?.isOnExternalDisplay ?: false
+            dexActive = DexControlService.instance?.isDexActive ?: false
             delay(1000)
         }
     }
@@ -115,11 +115,11 @@ fun DexControlApp(openAccessibilitySettings: () -> Unit) {
                         Text(
                             text = when {
                                 !serviceRunning -> "Serviço desativado — toque em Ativar"
-                                externalDisplay -> "Conectado ao monitor DeX"
-                                else -> "Controlando a tela do celular"
+                                dexActive -> "DeX ativo — controles habilitados"
+                                else -> "Aguardando o DeX — conecte ao monitor"
                             },
                             fontSize = 12.sp,
-                            color = if (serviceRunning) Accent else Color(0xFFE07E5E),
+                            color = if (serviceRunning && dexActive) Accent else Color(0xFFE07E5E),
                         )
                     }
                 },
@@ -133,6 +133,8 @@ fun DexControlApp(openAccessibilitySettings: () -> Unit) {
         ) {
             if (!serviceRunning) {
                 EnableServiceCard(openAccessibilitySettings)
+            } else if (!dexActive) {
+                DexInactiveCard()
             }
 
             TabRow(
@@ -189,6 +191,31 @@ private fun EnableServiceCard(openAccessibilitySettings: () -> Unit) {
             ) {
                 Text("Ativar serviço")
             }
+        }
+    }
+}
+
+@Composable
+private fun DexInactiveCard() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        colors = CardDefaults.cardColors(containerColor = PanelLight),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "DeX não detectado",
+                color = TextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "O cursor e os controles ficam desativados até o Samsung DeX ser " +
+                    "iniciado. Conecte o celular a um monitor (ou ative o DeX) e o " +
+                    "controle será habilitado automaticamente.",
+                color = TextSecondary,
+                fontSize = 13.sp,
+            )
         }
     }
 }
