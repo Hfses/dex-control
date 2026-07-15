@@ -1,8 +1,10 @@
 package com.dexcontrol.app
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -59,12 +61,14 @@ private val Navy = Color(0xFF0B1220)
 private val Panel = Color(0xFF141F33)
 private val PanelLight = Color(0xFF1D2B45)
 private val Accent = Color(0xFF33C3B0)
+private val Warning = Color(0xFFE07E5E)
 private val TextPrimary = Color(0xFFE9EEF6)
 private val TextSecondary = Color(0xFF8FA3BF)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ShizukuInput.init(applicationContext)
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -80,6 +84,12 @@ class MainActivity : ComponentActivity() {
                     openAccessibilitySettings = {
                         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     },
+                    openUrl = { url ->
+                        try {
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        } catch (_: Exception) {
+                        }
+                    },
                 )
             }
         }
@@ -88,18 +98,24 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DexControlApp(openAccessibilitySettings: () -> Unit) {
+fun DexControlApp(
+    openAccessibilitySettings: () -> Unit,
+    openUrl: (String) -> Unit,
+) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    var serviceRunning by remember { mutableStateOf(DexControlService.isRunning) }
-    var dexActive by remember { mutableStateOf(false) }
+    var accessibilityOn by remember { mutableStateOf(DexControlService.isRunning) }
+    var shizukuReady by remember { mutableStateOf(false) }
+    var shizukuInstalled by remember { mutableStateOf(false) }
     var sensitivity by remember { mutableFloatStateOf(2.5f) }
 
-    // Atualiza o status do serviço periodicamente.
+    // Atualiza status e a tela alvo periodicamente.
     LaunchedEffect(Unit) {
         while (true) {
-            serviceRunning = DexControlService.isRunning
-            dexActive = DexControlService.instance?.isDexActive ?: false
-            delay(1000)
+            accessibilityOn = DexControlService.isRunning
+            shizukuInstalled = ShizukuInput.isAvailable()
+            shizukuReady = ShizukuInput.isReady()
+            if (shizukuReady) ShizukuInput.refreshDisplay()
+            delay(1500)
         }
     }
 
@@ -115,13 +131,13 @@ fun DexControlApp(openAccessibilitySettings: () -> Unit) {
                     Column {
                         Text("DeX Control", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                         Text(
-                            text = when {
-                                !serviceRunning -> "Serviço desativado — ative na aba Config"
-                                dexActive -> "DeX ativo — controles habilitados"
-                                else -> "Aguardando o DeX — conecte ao monitor"
+                            text = if (shizukuReady) {
+                                "Shizuku pronto — controles ativos"
+                            } else {
+                                "Ative o Shizuku na aba Config"
                             },
                             fontSize = 12.sp,
-                            color = if (serviceRunning && dexActive) Accent else Color(0xFFE07E5E),
+                            color = if (shizukuReady) Accent else Warning,
                         )
                     }
                 },
@@ -159,11 +175,14 @@ fun DexControlApp(openAccessibilitySettings: () -> Unit) {
                 2 -> KeyboardScreen()
                 3 -> SystemScreen()
                 else -> ConfigScreen(
-                    serviceRunning = serviceRunning,
-                    dexActive = dexActive,
+                    accessibilityOn = accessibilityOn,
+                    shizukuInstalled = shizukuInstalled,
+                    shizukuReady = shizukuReady,
                     sensitivity = sensitivity,
                     onSensitivityChange = { sensitivity = it },
                     openAccessibilitySettings = openAccessibilitySettings,
+                    openUrl = openUrl,
+                    requestShizuku = { ShizukuInput.requestPermission() },
                 )
             }
         }
@@ -191,7 +210,7 @@ private fun TouchpadScreen(sensitivity: Float) {
                 .pointerInput(sensitivity) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        DexControlService.instance?.moveCursorBy(
+                        ShizukuInput.moveBy(
                             dragAmount.x * sensitivity,
                             dragAmount.y * sensitivity,
                         )
@@ -199,9 +218,9 @@ private fun TouchpadScreen(sensitivity: Float) {
                 }
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onTap = { DexControlService.instance?.leftClick() },
-                        onDoubleTap = { DexControlService.instance?.doubleClick() },
-                        onLongPress = { DexControlService.instance?.rightClick() },
+                        onTap = { ShizukuInput.leftClick() },
+                        onDoubleTap = { ShizukuInput.doubleClick() },
+                        onLongPress = { ShizukuInput.rightClick() },
                     )
                 },
             contentAlignment = Alignment.Center,
@@ -224,7 +243,8 @@ private fun TouchpadScreen(sensitivity: Float) {
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        DexControlService.instance?.scrollBy(dragAmount.y * 3f)
+                        // Arrastar para baixo rola para baixo.
+                        ShizukuInput.scrollVertical(-dragAmount.y / 40f)
                     }
                 },
             contentAlignment = Alignment.Center,
@@ -259,10 +279,10 @@ private fun MouseScreen() {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             BigActionButton("Clique\nesquerdo", Modifier.weight(1f).fillMaxHeight()) {
-                DexControlService.instance?.leftClick()
+                ShizukuInput.leftClick()
             }
             BigActionButton("Clique\ndireito", Modifier.weight(1f).fillMaxHeight()) {
-                DexControlService.instance?.rightClick()
+                ShizukuInput.rightClick()
             }
         }
 
@@ -273,7 +293,7 @@ private fun MouseScreen() {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             BigActionButton("Duplo clique", Modifier.weight(1f)) {
-                DexControlService.instance?.doubleClick()
+                ShizukuInput.doubleClick()
             }
         }
 
@@ -284,10 +304,10 @@ private fun MouseScreen() {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             BigActionButton("Rolar para cima", Modifier.weight(1f)) {
-                DexControlService.instance?.scrollBy(-350f)
+                ShizukuInput.scrollVertical(3f)
             }
             BigActionButton("Rolar para baixo", Modifier.weight(1f)) {
-                DexControlService.instance?.scrollBy(350f)
+                ShizukuInput.scrollVertical(-3f)
             }
         }
     }
@@ -306,7 +326,7 @@ private fun BigActionButton(label: String, modifier: Modifier = Modifier, onClic
 }
 
 // ---------------------------------------------------------------------------
-// Teclado
+// Teclado — texto via serviço de acessibilidade
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -375,8 +395,8 @@ private fun KeyboardScreen() {
         }
 
         Text(
-            "Os atalhos funcionam no campo de texto que estiver focado no DeX " +
-                "(equivalentes a Ctrl+C, Ctrl+V, Ctrl+X e Ctrl+A).",
+            "O teclado usa o serviço de acessibilidade (ative-o na aba Config). " +
+                "Os atalhos funcionam no campo de texto focado no DeX.",
             color = TextSecondary,
             fontSize = 12.sp,
         )
@@ -396,7 +416,7 @@ private fun ShortcutButton(label: String, modifier: Modifier = Modifier, onClick
 }
 
 // ---------------------------------------------------------------------------
-// Sistema
+// Sistema — teclas de navegação injetadas via Shizuku
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -411,33 +431,49 @@ private fun SystemScreen() {
         Text("Ações do sistema", color = TextPrimary, fontWeight = FontWeight.SemiBold)
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ShortcutButton("Voltar", Modifier.weight(1f)) { DexControlService.instance?.goBack() }
-            ShortcutButton("Início", Modifier.weight(1f)) { DexControlService.instance?.goHome() }
-            ShortcutButton("Recentes", Modifier.weight(1f)) { DexControlService.instance?.openRecents() }
+            ShortcutButton("Voltar", Modifier.weight(1f)) {
+                ShizukuInput.pressKey(KeyEvent.KEYCODE_BACK)
+            }
+            ShortcutButton("Início", Modifier.weight(1f)) {
+                ShizukuInput.pressKey(KeyEvent.KEYCODE_HOME)
+            }
+            ShortcutButton("Recentes", Modifier.weight(1f)) {
+                ShizukuInput.pressKey(KeyEvent.KEYCODE_APP_SWITCH)
+            }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ShortcutButton("Notificações", Modifier.weight(1f)) {
-                DexControlService.instance?.openNotifications()
+            ShortcutButton("Volume +", Modifier.weight(1f)) {
+                ShizukuInput.pressKey(KeyEvent.KEYCODE_VOLUME_UP)
             }
-            ShortcutButton("Capturar tela", Modifier.weight(1f)) {
-                DexControlService.instance?.takeScreenshot()
+            ShortcutButton("Volume -", Modifier.weight(1f)) {
+                ShizukuInput.pressKey(KeyEvent.KEYCODE_VOLUME_DOWN)
             }
         }
+
+        Text(
+            "As teclas de sistema são injetadas via Shizuku. Se o DeX estiver em um " +
+                "monitor externo, elas afetam a tela do DeX.",
+            color = TextSecondary,
+            fontSize = 12.sp,
+        )
     }
 }
 
 // ---------------------------------------------------------------------------
-// Config — ativação do serviço, status do DeX, sensibilidade e guia de uso
+// Config — Shizuku, acessibilidade, sensibilidade e guia de uso
 // ---------------------------------------------------------------------------
 
 @Composable
 private fun ConfigScreen(
-    serviceRunning: Boolean,
-    dexActive: Boolean,
+    accessibilityOn: Boolean,
+    shizukuInstalled: Boolean,
+    shizukuReady: Boolean,
     sensitivity: Float,
     onSensitivityChange: (Float) -> Unit,
     openAccessibilitySettings: () -> Unit,
+    openUrl: (String) -> Unit,
+    requestShizuku: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -446,58 +482,77 @@ private fun ConfigScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Status e ativação do serviço
+        // Shizuku — controle do mouse/scroll
         Card(
             colors = CardDefaults.cardColors(containerColor = PanelLight),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    if (serviceRunning) "Serviço ativado" else "Ativação necessária",
-                    color = TextPrimary,
+                    when {
+                        shizukuReady -> "1. Shizuku conectado"
+                        shizukuInstalled -> "1. Shizuku instalado — conceda a permissão"
+                        else -> "1. Shizuku necessário"
+                    },
+                    color = if (shizukuReady) Accent else Warning,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    if (serviceRunning) {
-                        "O serviço de acessibilidade do DeX Control está em execução."
-                    } else {
-                        "Para controlar o cursor do DeX, ative o serviço de acessibilidade " +
-                            "\u201CDeX Control\u201D nas configurações do Android."
-                    },
+                    "O controle do mouse (mover, clicar, rolar) usa o Shizuku, que dá " +
+                        "permissão de sistema sem root. Instale o app Shizuku, inicie o " +
+                        "serviço (por Wireless Debugging) e conceda a permissão ao DeX Control.",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                )
+                if (!shizukuInstalled) {
+                    Button(
+                        onClick = { openUrl("https://shizuku.rikka.app/download/") },
+                        colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Navy),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Instalar Shizuku")
+                    }
+                    OutlinedButton(
+                        onClick = { openUrl("https://shizuku.rikka.app/guide/setup/") },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Como configurar o Shizuku", color = TextPrimary)
+                    }
+                } else if (!shizukuReady) {
+                    Button(
+                        onClick = requestShizuku,
+                        colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Navy),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Conceder permissão")
+                    }
+                }
+            }
+        }
+
+        // Acessibilidade — teclado
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Panel),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    if (accessibilityOn) "2. Acessibilidade ativa (teclado)" else "2. Acessibilidade (teclado)",
+                    color = if (accessibilityOn) Accent else TextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Opcional: ative o serviço de acessibilidade para digitar texto e usar " +
+                        "os atalhos de edição na aba Teclado.",
                     color = TextSecondary,
                     fontSize = 13.sp,
                 )
                 Button(
                     onClick = openAccessibilitySettings,
-                    colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Navy),
+                    colors = ButtonDefaults.buttonColors(containerColor = PanelLight, contentColor = TextPrimary),
                 ) {
-                    Text(if (serviceRunning) "Configurações de acessibilidade" else "Ativar serviço")
+                    Text(if (accessibilityOn) "Abrir acessibilidade" else "Ativar teclado")
                 }
-            }
-        }
-
-        // Status do DeX
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Panel),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    if (dexActive) "DeX ativo" else "DeX não detectado",
-                    color = if (dexActive) Accent else Color(0xFFE07E5E),
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    if (dexActive) {
-                        "O monitor está conectado e os controles estão habilitados."
-                    } else {
-                        "O cursor e os controles ficam desativados até o Samsung DeX ser " +
-                            "iniciado. Conecte o celular a um monitor (ou ative o DeX) e o " +
-                            "controle será habilitado automaticamente."
-                    },
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                )
             }
         }
 
@@ -528,11 +583,11 @@ private fun ConfigScreen(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Como usar", color = TextPrimary, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "1. Conecte o celular a um monitor e ative o Samsung DeX.\n" +
-                        "2. Ative o serviço de acessibilidade acima.\n" +
-                        "3. O cursor aparece no monitor — use a aba Touchpad para mover e clicar.\n" +
-                        "4. A faixa lateral do Touchpad rola as páginas (scroll).\n" +
-                        "5. Para digitar, clique em um campo de texto no monitor e use a aba Teclado.",
+                    "1. Instale o Shizuku e inicie o serviço (uma vez por reinício do celular).\n" +
+                        "2. Conceda a permissão ao DeX Control (botão acima).\n" +
+                        "3. Conecte o celular ao monitor e ative o Samsung DeX.\n" +
+                        "4. Use a aba Touchpad para mover o cursor real do DeX e clicar.\n" +
+                        "5. Para digitar, ative a acessibilidade e use a aba Teclado.",
                     color = TextSecondary,
                     fontSize = 13.sp,
                     lineHeight = 20.sp,

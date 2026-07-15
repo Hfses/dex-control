@@ -24,19 +24,28 @@ difícil de usar.
 
 ## Como usar
 
-1. Conecte o celular a um monitor (cabo HDMI/USB-C ou Wireless DeX) e ative o **Samsung DeX**
-2. Abra o **DeX Control** no celular e toque em **"Ativar serviço"**
-   - Você será levado às configurações de Acessibilidade — ative **"DeX Control — Touchpad e Teclado"**
-3. Uma seta de cursor aparecerá no monitor do DeX
-4. Use a aba **Touchpad** para mover o cursor, clicar e rolar
-5. Para digitar: clique em um campo de texto no monitor e use a aba **Teclado**
+1. Instale o **[Shizuku](https://shizuku.rikka.app/)** e inicie o serviço
+   (via Wireless Debugging — não precisa de root). Isso é necessário uma vez a cada
+   reinício do celular.
+2. Abra o **DeX Control**, vá na aba **Config** e toque em **"Conceder permissão"**
+   para autorizar o Shizuku.
+3. Conecte o celular a um monitor (cabo HDMI/USB-C ou Wireless DeX) e ative o **Samsung DeX**.
+4. Use a aba **Touchpad** para mover o cursor real do DeX, clicar e rolar.
+5. Para digitar: ative o serviço de acessibilidade (aba Config), clique em um campo de
+   texto no monitor e use a aba **Teclado**.
 
 ## Como funciona
 
-O app usa um **Serviço de Acessibilidade** do Android (`AccessibilityService`) com
-`dispatchGesture` direcionado ao display externo (`setDisplayId`), o que permite
-injetar toques, arrastos e rolagens diretamente no monitor do DeX. A digitação usa
-ações de acessibilidade (`ACTION_SET_TEXT`, `ACTION_COPY`, `ACTION_PASTE`, etc.)
+O controle do mouse (mover, clicar, rolar) usa o **Shizuku**, que executa com
+identidade de shell (uid 2000) e possui a permissão `INJECT_EVENTS`. Via
+`IInputManager` (obtido pelo binder do Shizuku), o app injeta eventos de mouse
+(`SOURCE_MOUSE`) direcionados ao display do DeX com `setDisplayId`. Como são eventos
+de mouse reais, o próprio Android desenha e move o ponteiro do sistema.
+
+> **Por que Shizuku?** O `AccessibilityService` do Android é bloqueado pela Samsung
+> para injetar gestos na tela do DeX. O Shizuku é o único caminho confiável sem root.
+
+A digitação usa ações de acessibilidade (`ACTION_SET_TEXT`, `ACTION_COPY`, etc.)
 sobre o campo de texto focado.
 
 **Privacidade**: nenhum dado é coletado, armazenado ou enviado. O app funciona 100% offline.

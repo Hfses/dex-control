@@ -143,46 +143,8 @@ class DexControlService : AccessibilityService() {
         val display = external ?: dm.getDisplay(Display.DEFAULT_DISPLAY) ?: return
 
         targetDisplayId = display.displayId
-
-        try {
-            val displayContext = createDisplayContext(display)
-            val windowContext = displayContext.createWindowContext(
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                null,
-            )
-            val wm = windowContext.getSystemService(WindowManager::class.java) ?: return
-            windowManager = wm
-
-            val bounds = wm.maximumWindowMetrics.bounds
-            screenWidth = bounds.width().toFloat()
-            screenHeight = bounds.height().toFloat()
-            cursorX = screenWidth / 2f
-            cursorY = screenHeight / 2f
-
-            val view = CursorView(windowContext)
-            val params = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT,
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                x = cursorX.toInt()
-                y = cursorY.toInt()
-            }
-
-            wm.addView(view, params)
-            cursorView = view
-            layoutParams = params
-        } catch (_: Exception) {
-            // Se o overlay falhar, os gestos ainda funcionam sem o cursor visual.
-            windowManager = null
-            cursorView = null
-            layoutParams = null
-        }
+        // O ponteiro do mouse agora é o cursor real do sistema (injetado via
+        // Shizuku), então não desenhamos mais um cursor sobreposto aqui.
     }
 
     private fun removeCursorOverlay() {

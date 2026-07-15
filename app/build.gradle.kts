@@ -11,8 +11,8 @@ android {
         applicationId = "com.dexcontrol.app"
         minSdk = 30
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.3.0"
+        versionCode = 6
+        versionName = "1.4.0"
     }
 
     // Chave de assinatura fixa: garante que todas as versões tenham a mesma
@@ -67,4 +67,11 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // Shizuku: injeção de eventos com privilégio de shell (sem root),
+    // necessária para controlar a tela do DeX de verdade.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+    // Acesso a APIs ocultas (setDisplayId, IInputManager) no Android 9+.
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
 }
