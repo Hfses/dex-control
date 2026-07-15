@@ -61,6 +61,12 @@ object ShizukuInput {
 
     @Volatile private var permissionGranted = false
 
+    // Diagnóstico: última mensagem de erro e resultado do último teste.
+    @Volatile var lastError: String = "—"
+        private set
+    @Volatile private var bindError: String = "—"
+    @Volatile private var injectCount = 0
+
     // -----------------------------------------------------------------
     // Inicialização e permissão
     // -----------------------------------------------------------------
@@ -138,13 +144,56 @@ object ShizukuInput {
                     m.parameterTypes.isNotEmpty() &&
                     InputEvent::class.java.isAssignableFrom(m.parameterTypes[0])
             }
+            bindError = if (injectMethod != null) "—" else "injectInputEvent não encontrado"
             Log.i(TAG, "IInputManager vinculado (inject=${injectMethod != null})")
         } catch (e: Exception) {
+            bindError = "${e.javaClass.simpleName}: ${e.message}"
             Log.e(TAG, "bindInputManager: ${e.message}")
             inputManager = null
             injectMethod = null
         }
     }
+
+    // -----------------------------------------------------------------
+    // Diagnóstico
+    // -----------------------------------------------------------------
+
+    /** Relatório legível do estado de cada etapa, para depuração pelo usuário. */
+    fun diagnostics(): String {
+        val installed = isAvailable()
+        val perm = checkPermission()
+        val bound = inputManager != null
+        val hasInject = injectMethod != null
+        val hasExternal = hasExternalDisplay()
+        val setDisplayOk = setDisplayIdMethod != null
+        return buildString {
+            appendLine("Shizuku em execução: ${yn(installed)}")
+            appendLine("Permissão concedida: ${yn(perm)}")
+            appendLine("IInputManager ligado: ${yn(bound)}")
+            appendLine("injectInputEvent: ${yn(hasInject)}")
+            appendLine("setDisplayId: ${yn(setDisplayOk)}")
+            appendLine("Monitor DeX detectado: ${yn(hasExternal)}")
+            appendLine("Display alvo: $displayId (${width.toInt()}x${height.toInt()})")
+            appendLine("Eventos injetados: $injectCount")
+            appendLine("Erro no bind: $bindError")
+            append("Último erro: $lastError")
+        }
+    }
+
+    /** Injeta um pequeno movimento + clique para testar; retorna o diagnóstico. */
+    fun runTest(): String {
+        lastError = "—"
+        if (!isReady()) {
+            return "Não pronto.\n\n${diagnostics()}"
+        }
+        refreshDisplay()
+        moveBy(40f, 40f)
+        moveBy(-20f, -20f)
+        leftClick()
+        return diagnostics()
+    }
+
+    private fun yn(b: Boolean) = if (b) "SIM" else "NÃO"
 
     // -----------------------------------------------------------------
     // Display alvo (monitor do DeX)
@@ -316,8 +365,11 @@ object ShizukuInput {
             args[0] = event
             for (i in 1 until args.size) args[i] = 0
             method.invoke(im, *args)
+            injectCount++
         } catch (e: Exception) {
-            Log.e(TAG, "inject: ${e.message}")
+            val cause = e.cause ?: e
+            lastError = "${cause.javaClass.simpleName}: ${cause.message}"
+            Log.e(TAG, "inject: ${cause.message}")
         } finally {
             if (event is MotionEvent) event.recycle()
         }

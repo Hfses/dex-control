@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -530,6 +531,39 @@ private fun ConfigScreen(
             }
         }
 
+        // Diagnóstico — teste e relatório de estado
+        var report by remember { mutableStateOf("") }
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Panel),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Diagnóstico", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Conecte ao DeX, toque em Testar e observe se o cursor se move e " +
+                        "clica no monitor. O relatório abaixo mostra o que está falhando.",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                )
+                Button(
+                    onClick = { report = ShizukuInput.runTest() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Navy),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Testar e diagnosticar")
+                }
+                if (report.isNotEmpty()) {
+                    Text(
+                        report,
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+        }
+
         // Acessibilidade — teclado
         Card(
             colors = CardDefaults.cardColors(containerColor = Panel),
@@ -537,7 +571,7 @@ private fun ConfigScreen(
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    if (accessibilityOn) "2. Acessibilidade ativa (teclado)" else "2. Acessibilidade (teclado)",
+                    if (accessibilityOn) "3. Acessibilidade ativa (teclado)" else "3. Acessibilidade (teclado)",
                     color = if (accessibilityOn) Accent else TextPrimary,
                     fontWeight = FontWeight.SemiBold,
                 )
