@@ -176,7 +176,26 @@ object ShizukuInput {
             appendLine("Display alvo: $displayId (${width.toInt()}x${height.toInt()})")
             appendLine("Eventos injetados: $injectCount")
             appendLine("Erro no bind: $bindError")
-            append("Último erro: $lastError")
+            appendLine("Último erro: $lastError")
+            appendLine("--- Telas visíveis ---")
+            append(listDisplays())
+        }
+    }
+
+    /** Lista todas as telas que o app enxerga (id, nome, tamanho, flags). */
+    private fun listDisplays(): String {
+        val ctx = appContext ?: return "sem contexto"
+        val dm = ctx.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val all = dm.displays
+        if (all.isEmpty()) return "nenhuma"
+        return all.joinToString("\n") { d ->
+            @Suppress("DEPRECATION")
+            val p = android.graphics.Point().also { d.getRealSize(it) }
+            val flags = StringBuilder()
+            if (d.flags and Display.FLAG_PRESENTATION != 0) flags.append("P")
+            if (d.flags and Display.FLAG_PRIVATE != 0) flags.append("V")
+            if (d.flags and Display.FLAG_SECURE != 0) flags.append("S")
+            "id ${d.displayId}: \"${d.name}\" ${p.x}x${p.y} st=${d.state} [$flags]"
         }
     }
 
@@ -203,19 +222,22 @@ object ShizukuInput {
     fun refreshDisplay() {
         val ctx = appContext ?: return
         val dm = ctx.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val external = dm.displays.firstOrNull {
+        val candidates = dm.displays.filter {
             it.displayId != Display.DEFAULT_DISPLAY && it.isValid
         }
+        // Prefere uma tela externa que esteja ligada (o monitor do DeX).
+        val external = candidates.firstOrNull { it.state == Display.STATE_ON }
+            ?: candidates.firstOrNull()
         val display = external ?: dm.getDisplay(Display.DEFAULT_DISPLAY) ?: return
 
         val newId = display.displayId
+        @Suppress("DEPRECATION")
+        val point = android.graphics.Point()
+        @Suppress("DEPRECATION")
+        display.getRealSize(point)
+        width = point.x.toFloat().coerceAtLeast(1f)
+        height = point.y.toFloat().coerceAtLeast(1f)
         if (newId != displayId) {
-            @Suppress("DEPRECATION")
-            val point = android.graphics.Point()
-            @Suppress("DEPRECATION")
-            display.getRealSize(point)
-            width = point.x.toFloat().coerceAtLeast(1f)
-            height = point.y.toFloat().coerceAtLeast(1f)
             cursorX = width / 2f
             cursorY = height / 2f
             displayId = newId
